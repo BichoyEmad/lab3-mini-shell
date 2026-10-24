@@ -1,4 +1,3 @@
-
 /*
  * 
  *
@@ -30,92 +29,92 @@
 
 void parse(std::vector<Token> &tokens)
 {
-    Command currentCommand;
-    SimpleCommand *currentSimpleCommand = new SimpleCommand();
+    Command cur_cmd;
+    SimpleCommand *curr_s_cmd = new SimpleCommand();
 
-    for (size_t i = 0; i < tokens.size(); i++)
+    for (size_t idx = 0; idx < tokens.size(); idx++)
     {
-        Token token = tokens[i];
+        Token tkn = tokens[idx];
 
-        if (token.type == TOKEN_EOF)
+        if (tkn.type == TOKEN_EOF)
         {
             break;
         }
-        else if (token.type == TOKEN_COMMAND || token.type == TOKEN_ARGUMENT)
+        else if (tkn.type == TOKEN_COMMAND || tkn.type == TOKEN_ARGUMENT)
         {
-            currentSimpleCommand->insertArgument(strdup(token.value.c_str()));
+            curr_s_cmd->insertArgument(strdup(tkn.value.c_str()));
         }
-        else if (token.type == TOKEN_PIPE)
+        else if (tkn.type == TOKEN_PIPE)
         {
-            currentCommand.insertSimpleCommand(currentSimpleCommand);
-            currentSimpleCommand = new SimpleCommand();
+            cur_cmd.insertSimpleCommand(curr_s_cmd);
+            curr_s_cmd = new SimpleCommand();
         }
-        // output redirection >
-        else if (token.type == TOKEN_REDIRECT)
+        // output redir >
+        else if (tkn.type == TOKEN_REDIRECT)
         {
-            i++; // get filename
-            if (i < tokens.size())
+            idx++; // grab filename nxt
+            if (idx < tokens.size())
             {
-                currentCommand._outFile = strdup(tokens[i].value.c_str());
+                cur_cmd._outFile = strdup(tokens[idx].value.c_str());
             }
         }
-        // append redirection >>
-        else if (token.type == TOKEN_APPEND)
+        // appnd redir >>
+        else if (tkn.type == TOKEN_APPEND)
         {
-            i++;
-            if (i < tokens.size())
+            idx++;
+            if (idx < tokens.size())
             {
-                currentCommand._outFile = strdup(tokens[i].value.c_str());
-                currentCommand._append = 1;
+                cur_cmd._outFile = strdup(tokens[idx].value.c_str());
+                cur_cmd._append = 1;
             }
         }
-        // input redirection <
-        else if (token.type == TOKEN_INPUT)
+        // input redir <
+        else if (tkn.type == TOKEN_INPUT)
         {
-            i++;
-            if (i < tokens.size())
+            idx++;
+            if (idx < tokens.size())
             {
-                currentCommand._inputFile = strdup(tokens[i].value.c_str());
+                cur_cmd._inputFile = strdup(tokens[idx].value.c_str());
             }
         }
-        // error redirection 2>
-        else if (token.type == TOKEN_ERROR)
+        // err redir 2>
+        else if (tkn.type == TOKEN_ERROR)
         {
-            i++;
-            if (i < tokens.size())
+            idx++;
+            if (idx < tokens.size())
             {
-                currentCommand._errFile = strdup(tokens[i].value.c_str());
+                cur_cmd._errFile = strdup(tokens[idx].value.c_str());
             }
         }
-        // combined output and error redirection >>&
-        else if (token.type == TOKEN_REDIRECT_AND_ERROR)
+        // combined out & err >>&
+        else if (tkn.type == TOKEN_REDIRECT_AND_ERROR)
         {
-            i++;
-            if (i < tokens.size())
+            idx++;
+            if (idx < tokens.size())
             {
-                currentCommand._outFile = strdup(tokens[i].value.c_str());
-                currentCommand._errFile = strdup(tokens[i].value.c_str());
-                currentCommand._out_error = 1;
+                cur_cmd._outFile = strdup(tokens[idx].value.c_str());
+                cur_cmd._errFile = strdup(tokens[idx].value.c_str());
+                cur_cmd._out_error = 1;
             }
         }
-        // background execution &
-        else if (token.type == TOKEN_BACKGROUND)
+        // bg exec &
+        else if (tkn.type == TOKEN_BACKGROUND)
         {
-            currentCommand._background = 1;
+            cur_cmd._background = 1;
         }
     }
 
-    if (currentSimpleCommand->_numberOfArguments > 0)
+    if (curr_s_cmd->_numberOfArguments > 0)
     {
-        currentCommand.insertSimpleCommand(currentSimpleCommand);
+        cur_cmd.insertSimpleCommand(curr_s_cmd);
     }
     else
     {
-        free(currentSimpleCommand->_arguments);
-        delete currentSimpleCommand;
+        free(curr_s_cmd->_arguments);
+        delete curr_s_cmd;
     }
 
-    currentCommand.execute();
+    cur_cmd.execute();
 }
 
 SimpleCommand::SimpleCommand()
@@ -143,14 +142,16 @@ void SimpleCommand::insertArgument(char *argument)
 Command::Command()
 {
     _numberOfAvailableSimpleCommands = 1;
-    _simpleCommands = (SimpleCommand **)
-        malloc(_numberOfSimpleCommands * sizeof(SimpleCommand *));
-
     _numberOfSimpleCommands = 0;
+    _simpleCommands = (SimpleCommand **)
+        malloc(_numberOfAvailableSimpleCommands * sizeof(SimpleCommand *));
+
     _outFile = 0;
     _inputFile = 0;
     _errFile = 0;
     _background = 0;
+    _append = 0;
+    _out_error = 0;
 }
 
 void Command::insertSimpleCommand(SimpleCommand *simpleCommand)
@@ -199,6 +200,8 @@ void Command::clear()
     _inputFile = 0;
     _errFile = 0;
     _background = 0;
+    _append = 0;
+    _out_error = 0;
 }
 
 void Command::print()
@@ -229,10 +232,167 @@ void Command::print()
 
 void Command::execute()
 {
-    print();
-    /*
-        Write your code here
-    */
+    if (_numberOfSimpleCommands == 0)
+    {
+        clear();
+        prompt();
+        return;
+    }
+
+    // save defult std files
+    int defultStdin = dup(0);
+    int defultStdout = dup(1);
+    int defultStderr = dup(2);
+
+    int fd_in = 0;
+    int fd_out = 0;
+
+    if (_inputFile)
+    {
+        fd_in = open(_inputFile, O_RDONLY);
+        if (fd_in < 0)
+        {
+            perror("cant open input file");
+            clear();
+            prompt();
+            return;
+        }
+    }
+    else
+    {
+        fd_in = dup(defultStdin);
+    }
+
+    pid_t lst_pid = 0;
+
+    // loop thru pipeline
+    for (int i = 0; i < _numberOfSimpleCommands; i++)
+    {
+        dup2(fd_in, 0);
+        close(fd_in);
+
+        // check if last cmd in pipe
+        if (i == _numberOfSimpleCommands - 1)
+        {
+            if (_outFile)
+            {
+                int flgs = O_WRONLY | O_CREAT;
+                if (_append)
+                {
+                    flgs |= O_APPEND;
+                }
+                else
+                {
+                    flgs |= O_TRUNC;
+                }
+
+                fd_out = open(_outFile, flgs, 0666);
+                if (fd_out < 0)
+                {
+                    perror("cant open output");
+                    clear();
+                    prompt();
+                    return;
+                }
+            }
+            else
+            {
+                fd_out = dup(defultStdout);
+            }
+
+            if (_errFile)
+            {
+                int err_flgs = O_WRONLY | O_CREAT | O_APPEND;
+                int fd_err = open(_errFile, err_flgs, 0666);
+                if (fd_err >= 0)
+                {
+                    dup2(fd_err, 2);
+                    close(fd_err);
+                }
+            }
+        }
+        else
+        {
+            int p_fds[2];
+            if (pipe(p_fds) < 0)
+            {
+                perror("pipe err");
+                clear();
+                prompt();
+                return;
+            }
+            fd_out = p_fds[1]; // write end
+            fd_in = p_fds[0];  // read end
+        }
+
+        dup2(fd_out, 1);
+        close(fd_out);
+
+        // exit check
+        if (_numberOfSimpleCommands == 1 && strcmp(_simpleCommands[0]->_arguments[0], "exit") == 0)
+        {
+            printf("Good bye!!\n");
+            exit(0);
+        }
+
+        // cd check
+        if (_numberOfSimpleCommands == 1 && strcmp(_simpleCommands[0]->_arguments[0], "cd") == 0)
+        {
+            char *d = _simpleCommands[0]->_arguments[1];
+            if (d == NULL)
+            {
+                d = getenv("HOME");
+            }
+            if (chdir(d) < 0)
+            {
+                perror("cd err");
+            }
+            dup2(defultStdin, 0);
+            dup2(defultStdout, 1);
+            dup2(defultStderr, 2);
+            close(defultStdin);
+            close(defultStdout);
+            close(defultStderr);
+            clear();
+            prompt();
+            return;
+        }
+
+        // fork proc
+        pid_t p_id = fork();
+        if (p_id < 0)
+        {
+            perror("fork err");
+            clear();
+            prompt();
+            return;
+        }
+
+        if (p_id == 0)
+        {
+            // child execution
+            execvp(_simpleCommands[i]->_arguments[0], _simpleCommands[i]->_arguments);
+            perror("execvp err");
+            _exit(1);
+        }
+        else
+        {
+            lst_pid = p_id;
+        }
+    }
+
+    // restore stds
+    dup2(defultStdin, 0);
+    dup2(defultStdout, 1);
+    dup2(defultStderr, 2);
+    close(defultStdin);
+    close(defultStdout);
+    close(defultStderr);
+
+    if (!_background)
+    {
+        waitpid(lst_pid, NULL, 0);
+    }
 
     clear();
     prompt();
