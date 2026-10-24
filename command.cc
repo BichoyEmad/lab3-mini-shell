@@ -28,19 +28,94 @@
 #include "command.h"
 #include "tokenizer.h"
 
-
 void parse(std::vector<Token> &tokens)
 {
     Command currentCommand;
     SimpleCommand *currentSimpleCommand = new SimpleCommand();
 
-    currentCommand.execute();
-    /*
-      Implement this function 
-      you must parse for all possible tokens scenario
-      right now command.execute only print the format , you will inject it in your logic.
+    for (size_t i = 0; i < tokens.size(); i++)
+    {
+        Token token = tokens[i];
 
-    */
+        if (token.type == TOKEN_EOF)
+        {
+            break;
+        }
+        else if (token.type == TOKEN_COMMAND || token.type == TOKEN_ARGUMENT)
+        {
+            currentSimpleCommand->insertArgument(strdup(token.value.c_str()));
+        }
+        else if (token.type == TOKEN_PIPE)
+        {
+            currentCommand.insertSimpleCommand(currentSimpleCommand);
+            currentSimpleCommand = new SimpleCommand();
+        }
+        // output redirection >
+        else if (token.type == TOKEN_REDIRECT)
+        {
+            i++; // get filename
+            if (i < tokens.size())
+            {
+                currentCommand._outFile = strdup(tokens[i].value.c_str());
+            }
+        }
+        // append redirection >>
+        else if (token.type == TOKEN_APPEND)
+        {
+            i++;
+            if (i < tokens.size())
+            {
+                currentCommand._outFile = strdup(tokens[i].value.c_str());
+                currentCommand._append = 1;
+            }
+        }
+        // input redirection <
+        else if (token.type == TOKEN_INPUT)
+        {
+            i++;
+            if (i < tokens.size())
+            {
+                currentCommand._inputFile = strdup(tokens[i].value.c_str());
+            }
+        }
+        // error redirection 2>
+        else if (token.type == TOKEN_ERROR)
+        {
+            i++;
+            if (i < tokens.size())
+            {
+                currentCommand._errFile = strdup(tokens[i].value.c_str());
+            }
+        }
+        // combined output and error redirection >>&
+        else if (token.type == TOKEN_REDIRECT_AND_ERROR)
+        {
+            i++;
+            if (i < tokens.size())
+            {
+                currentCommand._outFile = strdup(tokens[i].value.c_str());
+                currentCommand._errFile = strdup(tokens[i].value.c_str());
+                currentCommand._out_error = 1;
+            }
+        }
+        // background execution &
+        else if (token.type == TOKEN_BACKGROUND)
+        {
+            currentCommand._background = 1;
+        }
+    }
+
+    if (currentSimpleCommand->_numberOfArguments > 0)
+    {
+        currentCommand.insertSimpleCommand(currentSimpleCommand);
+    }
+    else
+    {
+        free(currentSimpleCommand->_arguments);
+        delete currentSimpleCommand;
+    }
+
+    currentCommand.execute();
 }
 
 SimpleCommand::SimpleCommand()
