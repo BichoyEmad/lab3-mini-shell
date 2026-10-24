@@ -1,0 +1,20 @@
+total 684
+drwxrwxr-x 3 user user   4096 Oct 24 22:02 .
+drwxrwxr-x 6 user user   4096 Oct 24 14:52 ..
+drwxrwxr-x 7 user user   4096 Oct 24 21:43 .git
+-rw-rw-r-- 1 user user    347 Oct 24 20:53 Makefile
+-rw-rw-r-- 1 user user  14247 Oct 24 22:01 command.cc
+-rw-rw-r-- 1 user user    649 Oct 24 17:28 command.h
+-rw-rw-r-- 1 user user 171968 Oct 24 22:01 command.o
+-rw-rw-r-- 1 user user     65 Oct 24 21:55 error.txt
+-rwxrwxr-x 1 user user 215800 Oct 24 22:01 myshell
+-rw-rw-r-- 1 user user     53 Oct 24 21:48 out
+-rw-rw-r-- 1 user user      0 Oct 24 21:48 out2ls
+-rw-rw-r-- 1 user user      0 Oct 24 22:02 out_test.txt
+-rw-rw-r-- 1 user user    631 Oct 24 21:55 output.txt
+-rw-rw-r-- 1 user user    594 Oct 24 21:48 shell.log
+-rw-rw-r-- 1 user user     18 Oct 24 22:02 test_in.txt
+-rw-rw-r-- 1 user user   1954 Oct 24 17:28 tokenizer.cc
+-rw-rw-r-- 1 user user    456 Oct 24 17:28 tokenizer.h
+-rw-rw-r-- 1 user user 244744 Oct 24 22:01 tokenizer.o
+"Appended line"

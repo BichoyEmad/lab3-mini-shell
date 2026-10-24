@@ -1,0 +1,2 @@
+ls: cannot access 'non_existent_target': No such file or directory
+command.cc

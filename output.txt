@@ -1,26 +1,14 @@
-total 640
-drwxrwxr-x 3 user user   4096 Oct 24 21:18 .
-drwxrwxr-x 6 user user   4096 Oct 24 14:52 ..
-drwxrwxr-x 7 user user   4096 Oct 24 20:59 .git
--rw-rw-r-- 1 user user    347 Oct 24 20:53 Makefile
--rw-rw-r-- 1 user user  10686 Oct 24 21:17 command.cc
--rw-rw-r-- 1 user user    649 Oct 24 17:28 command.h
--rw-rw-r-- 1 user user 156816 Oct 24 21:17 command.o
--rwxrwxr-x 1 user user 206952 Oct 24 21:17 myshell
--rw-rw-r-- 1 user user      0 Oct 24 21:18 output.txt
--rw-rw-r-- 1 user user   1954 Oct 24 17:28 tokenizer.cc
--rw-rw-r-- 1 user user    456 Oct 24 17:28 tokenizer.h
--rw-rw-r-- 1 user user 244744 Oct 24 20:55 tokenizer.o
-total 644
-drwxrwxr-x 3 user user   4096 Oct 24 21:18 .
-drwxrwxr-x 6 user user   4096 Oct 24 14:52 ..
-drwxrwxr-x 7 user user   4096 Oct 24 20:59 .git
--rw-rw-r-- 1 user user    347 Oct 24 20:53 Makefile
--rw-rw-r-- 1 user user  10686 Oct 24 21:17 command.cc
--rw-rw-r-- 1 user user    649 Oct 24 17:28 command.h
--rw-rw-r-- 1 user user 156816 Oct 24 21:17 command.o
--rwxrwxr-x 1 user user 206952 Oct 24 21:17 myshell
--rw-rw-r-- 1 user user    632 Oct 24 21:18 output.txt
--rw-rw-r-- 1 user user   1954 Oct 24 17:28 tokenizer.cc
--rw-rw-r-- 1 user user    456 Oct 24 17:28 tokenizer.h
--rw-rw-r-- 1 user user 244744 Oct 24 20:55 tokenizer.o
+total 52
+drwxrwxr-x 3 user user  4096 Oct 24 21:54 .
+drwxrwxr-x 6 user user  4096 Oct 24 14:52 ..
+drwxrwxr-x 7 user user  4096 Oct 24 21:43 .git
+-rw-rw-r-- 1 user user   347 Oct 24 20:53 Makefile
+-rw-rw-r-- 1 user user 14285 Oct 24 21:53 command.cc
+-rw-rw-r-- 1 user user   649 Oct 24 17:28 command.h
+-rw-rw-r-- 1 user user    53 Oct 24 21:48 out
+-rw-rw-r-- 1 user user     0 Oct 24 21:48 out2ls
+-rw-rw-r-- 1 user user     0 Oct 24 21:55 output.txt
+-rw-rw-r-- 1 user user   594 Oct 24 21:48 shell.log
+-rw-rw-r-- 1 user user  1954 Oct 24 17:28 tokenizer.cc
+-rw-rw-r-- 1 user user   456 Oct 24 17:28 tokenizer.h
+Appending a new line

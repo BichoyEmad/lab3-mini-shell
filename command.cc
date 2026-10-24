@@ -27,10 +27,48 @@
 #include "command.h"
 #include "tokenizer.h"
 
+// helper to clean up simple command args on error
+void free_simple_command(SimpleCommand *s_cmd)
+{
+    if (s_cmd)
+    {
+        for (int j = 0; j < s_cmd->_numberOfArguments; j++)
+        {
+            free(s_cmd->_arguments[j]);
+        }
+        free(s_cmd->_arguments);
+        delete s_cmd;
+    }
+}
+
+// sigchld handler for logging terminated child procs
+void sigchld_handler(int sig)
+{
+    // reap zombie procs without blocking
+    while (waitpid(-1, NULL, WNOHANG) > 0)
+    {
+        FILE *log_file = fopen("shell.log", "a");
+        if (log_file != NULL)
+        {
+            time_t now = time(NULL);
+            fprintf(log_file, "Child process terminated at: %s", ctime(&now));
+            fclose(log_file);
+        }
+    }
+}
+
 void parse(std::vector<Token> &tokens)
 {
     Command cur_cmd;
     SimpleCommand *curr_s_cmd = new SimpleCommand();
+
+    // err check: cant start with a pipe
+    if (!tokens.empty() && tokens[0].type == TOKEN_PIPE)
+    {
+        fprintf(stderr, "syntax error: unexpected token '|'\n");
+        free_simple_command(curr_s_cmd);
+        return;
+    }
 
     for (size_t idx = 0; idx < tokens.size(); idx++)
     {
@@ -46,56 +84,83 @@ void parse(std::vector<Token> &tokens)
         }
         else if (tkn.type == TOKEN_PIPE)
         {
+            if (curr_s_cmd->_numberOfArguments == 0 || idx + 1 >= tokens.size() || tokens[idx + 1].type == TOKEN_PIPE || tokens[idx + 1].type == TOKEN_EOF)
+            {
+                fprintf(stderr, "syntax error near unexpected token '|'\n");
+                free_simple_command(curr_s_cmd);
+                cur_cmd.clear();
+                return;
+            }
             cur_cmd.insertSimpleCommand(curr_s_cmd);
             curr_s_cmd = new SimpleCommand();
         }
         // output redir >
         else if (tkn.type == TOKEN_REDIRECT)
         {
-            idx++; // grab filename nxt
-            if (idx < tokens.size())
+            idx++;
+            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
             {
-                cur_cmd._outFile = strdup(tokens[idx].value.c_str());
+                fprintf(stderr, "syntax error: missing file for redirection\n");
+                free_simple_command(curr_s_cmd);
+                cur_cmd.clear();
+                return;
             }
+            cur_cmd._outFile = strdup(tokens[idx].value.c_str());
         }
         // appnd redir >>
         else if (tkn.type == TOKEN_APPEND)
         {
             idx++;
-            if (idx < tokens.size())
+            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
             {
-                cur_cmd._outFile = strdup(tokens[idx].value.c_str());
-                cur_cmd._append = 1;
+                fprintf(stderr, "syntax error: missing file for append\n");
+                free_simple_command(curr_s_cmd);
+                cur_cmd.clear();
+                return;
             }
+            cur_cmd._outFile = strdup(tokens[idx].value.c_str());
+            cur_cmd._append = 1;
         }
         // input redir <
         else if (tkn.type == TOKEN_INPUT)
         {
             idx++;
-            if (idx < tokens.size())
+            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
             {
-                cur_cmd._inputFile = strdup(tokens[idx].value.c_str());
+                fprintf(stderr, "syntax error: missing file for input redirection\n");
+                free_simple_command(curr_s_cmd);
+                cur_cmd.clear();
+                return;
             }
+            cur_cmd._inputFile = strdup(tokens[idx].value.c_str());
         }
         // err redir 2>
         else if (tkn.type == TOKEN_ERROR)
         {
             idx++;
-            if (idx < tokens.size())
+            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
             {
-                cur_cmd._errFile = strdup(tokens[idx].value.c_str());
+                fprintf(stderr, "syntax error: missing file for error redirection\n");
+                free_simple_command(curr_s_cmd);
+                cur_cmd.clear();
+                return;
             }
+            cur_cmd._errFile = strdup(tokens[idx].value.c_str());
         }
         // combined out & err >>&
         else if (tkn.type == TOKEN_REDIRECT_AND_ERROR)
         {
             idx++;
-            if (idx < tokens.size())
+            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
             {
-                cur_cmd._outFile = strdup(tokens[idx].value.c_str());
-                cur_cmd._errFile = strdup(tokens[idx].value.c_str());
-                cur_cmd._out_error = 1;
+                fprintf(stderr, "syntax error: missing file for out/err redirection\n");
+                free_simple_command(curr_s_cmd);
+                cur_cmd.clear();
+                return;
             }
+            cur_cmd._outFile = strdup(tokens[idx].value.c_str());
+            cur_cmd._errFile = strdup(tokens[idx].value.c_str());
+            cur_cmd._out_error = 1;
         }
         // bg exec &
         else if (tkn.type == TOKEN_BACKGROUND)
@@ -110,8 +175,7 @@ void parse(std::vector<Token> &tokens)
     }
     else
     {
-        free(curr_s_cmd->_arguments);
-        delete curr_s_cmd;
+        free_simple_command(curr_s_cmd);
     }
 
     cur_cmd.execute();
@@ -126,6 +190,37 @@ SimpleCommand::SimpleCommand()
 
 void SimpleCommand::insertArgument(char *argument)
 {
+    // check if argument has wildcards (* or ?)
+    if (strchr(argument, '*') != NULL || strchr(argument, '?') != NULL)
+    {
+        glob_t glob_res;
+        memset(&glob_res, 0, sizeof(glob_res));
+        
+        int res = glob(argument, 0, NULL, &glob_res);
+        if (res == 0)
+        {
+            free(argument); // free original pattern
+            for (size_t i = 0; i < glob_res.gl_pathc; i++)
+            {
+                if (_numberOfAvailableArguments <= _numberOfArguments + 1)
+                {
+                    _numberOfAvailableArguments *= 2;
+                    _arguments = (char **)realloc(_arguments, _numberOfAvailableArguments * sizeof(char *));
+                }
+                _arguments[_numberOfArguments] = strdup(glob_res.gl_pathv[i]);
+                _arguments[_numberOfArguments + 1] = NULL;
+                _numberOfArguments++;
+            }
+            globfree(&glob_res);
+            return;
+        }
+        else
+        {
+            globfree(&glob_res);
+            // if no match, keep pattern as is
+        }
+    }
+
     if (_numberOfAvailableArguments == _numberOfArguments + 1)
     {
         _numberOfAvailableArguments *= 2;
@@ -179,6 +274,11 @@ void Command::clear()
         free(_simpleCommands[i]->_arguments);
         free(_simpleCommands[i]);
     }
+    
+    if (_simpleCommands)
+    {
+        free(_simpleCommands);
+    }
 
     if (_outFile)
     {
@@ -190,12 +290,14 @@ void Command::clear()
         free(_inputFile);
     }
 
-    if (_errFile)
+    if (_errFile && !_out_error)
     {
         free(_errFile);
     }
 
     _numberOfSimpleCommands = 0;
+    _numberOfAvailableSimpleCommands = 1;
+    _simpleCommands = (SimpleCommand **)malloc(_numberOfAvailableSimpleCommands * sizeof(SimpleCommand *));
     _outFile = 0;
     _inputFile = 0;
     _errFile = 0;
@@ -239,10 +341,10 @@ void Command::execute()
         return;
     }
 
-    // save defult std files
-    int defultStdin = dup(0);
-    int defultStdout = dup(1);
-    int defultStderr = dup(2);
+    // save default std files
+    int defaultStdin = dup(0);
+    int defaultStdout = dup(1);
+    int defaultStderr = dup(2);
 
     int fd_in = 0;
     int fd_out = 0;
@@ -260,7 +362,7 @@ void Command::execute()
     }
     else
     {
-        fd_in = dup(defultStdin);
+        fd_in = dup(defaultStdin);
     }
 
     pid_t lst_pid = 0;
@@ -294,13 +396,18 @@ void Command::execute()
                     prompt();
                     return;
                 }
+
+                if (_out_error)
+                {
+                    dup2(fd_out, 2);
+                }
             }
             else
             {
-                fd_out = dup(defultStdout);
+                fd_out = dup(defaultStdout);
             }
 
-            if (_errFile)
+            if (_errFile && !_out_error)
             {
                 int err_flgs = O_WRONLY | O_CREAT | O_APPEND;
                 int fd_err = open(_errFile, err_flgs, 0666);
@@ -347,12 +454,12 @@ void Command::execute()
             {
                 perror("cd err");
             }
-            dup2(defultStdin, 0);
-            dup2(defultStdout, 1);
-            dup2(defultStderr, 2);
-            close(defultStdin);
-            close(defultStdout);
-            close(defultStderr);
+            dup2(defaultStdin, 0);
+            dup2(defaultStdout, 1);
+            dup2(defaultStderr, 2);
+            close(defaultStdin);
+            close(defaultStdout);
+            close(defaultStderr);
             clear();
             prompt();
             return;
@@ -382,12 +489,12 @@ void Command::execute()
     }
 
     // restore stds
-    dup2(defultStdin, 0);
-    dup2(defultStdout, 1);
-    dup2(defultStderr, 2);
-    close(defultStdin);
-    close(defultStdout);
-    close(defultStderr);
+    dup2(defaultStdin, 0);
+    dup2(defaultStdout, 1);
+    dup2(defaultStderr, 2);
+    close(defaultStdin);
+    close(defaultStdout);
+    close(defaultStderr);
 
     if (!_background)
     {
@@ -416,6 +523,12 @@ SimpleCommand *Command::_currentSimpleCommand;
 
 int main()
 {
+    // ignore ctrl-c (SIGINT)
+    signal(SIGINT, SIG_IGN);
+
+    // setup sigchld handler for logging terminated children
+    signal(SIGCHLD, sigchld_handler);
+
     Command::_currentCommand.prompt();
     return 0;
 }
