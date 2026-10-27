@@ -41,10 +41,9 @@ void free_simple_command(SimpleCommand *s_cmd)
     }
 }
 
-// sigchld handler for logging terminated child procs
+// handle logging terminated child procs
 void sigchld_handler(int sig)
 {
-    // reap zombie procs without blocking
     while (waitpid(-1, NULL, WNOHANG) > 0)
     {
         FILE *log_file = fopen("shell.log", "a");
@@ -62,110 +61,108 @@ void parse(std::vector<Token> &tokens)
     Command cur_cmd;
     SimpleCommand *curr_s_cmd = new SimpleCommand();
 
-    // err check: cant start with a pipe
     if (!tokens.empty() && tokens[0].type == TOKEN_PIPE)
     {
-        fprintf(stderr, "syntax error: unexpected token '|'\n");
+        fprintf(stderr, "error invalid token '|'\n");
         free_simple_command(curr_s_cmd);
         return;
     }
 
-    for (size_t idx = 0; idx < tokens.size(); idx++)
+    bool loop = true;
+    for (size_t i = 0; i < tokens.size() && loop; i++)
     {
-        Token tkn = tokens[idx];
+        Token tkn = tokens[i];
 
-        if (tkn.type == TOKEN_EOF)
+        switch (tkn.type)
         {
-            break;
-        }
-        else if (tkn.type == TOKEN_COMMAND || tkn.type == TOKEN_ARGUMENT)
-        {
-            curr_s_cmd->insertArgument(strdup(tkn.value.c_str()));
-        }
-        else if (tkn.type == TOKEN_PIPE)
-        {
-            if (curr_s_cmd->_numberOfArguments == 0 || idx + 1 >= tokens.size() || tokens[idx + 1].type == TOKEN_PIPE || tokens[idx + 1].type == TOKEN_EOF)
+        case TOKEN_EOF:
+          loop = false;
+          break;
+        case TOKEN_COMMAND:
+        case TOKEN_ARGUMENT:
+          curr_s_cmd->insertArgument(strdup(tkn.value.c_str()));
+          break;
+        case TOKEN_PIPE:
+          if (curr_s_cmd->_numberOfArguments == 0
+                || i + 1 >= tokens.size()
+                || tokens[i + 1].type == TOKEN_PIPE
+                || tokens[i + 1].type == TOKEN_EOF
+            )
             {
-                fprintf(stderr, "syntax error near unexpected token '|'\n");
+                fprintf(stderr, "error unexpected token '|'\n");
                 free_simple_command(curr_s_cmd);
                 cur_cmd.clear();
                 return;
             }
             cur_cmd.insertSimpleCommand(curr_s_cmd);
             curr_s_cmd = new SimpleCommand();
-        }
-        // output redir >
-        else if (tkn.type == TOKEN_REDIRECT)
-        {
-            idx++;
-            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
-            {
-                fprintf(stderr, "syntax error: missing file for redirection\n");
-                free_simple_command(curr_s_cmd);
-                cur_cmd.clear();
-                return;
-            }
-            cur_cmd._outFile = strdup(tokens[idx].value.c_str());
-        }
-        // appnd redir >>
-        else if (tkn.type == TOKEN_APPEND)
-        {
-            idx++;
-            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
-            {
-                fprintf(stderr, "syntax error: missing file for append\n");
-                free_simple_command(curr_s_cmd);
-                cur_cmd.clear();
-                return;
-            }
-            cur_cmd._outFile = strdup(tokens[idx].value.c_str());
-            cur_cmd._append = 1;
-        }
-        // input redir <
-        else if (tkn.type == TOKEN_INPUT)
-        {
-            idx++;
-            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
-            {
-                fprintf(stderr, "syntax error: missing file for input redirection\n");
-                free_simple_command(curr_s_cmd);
-                cur_cmd.clear();
-                return;
-            }
-            cur_cmd._inputFile = strdup(tokens[idx].value.c_str());
-        }
-        // err redir 2>
-        else if (tkn.type == TOKEN_ERROR)
-        {
-            idx++;
-            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
-            {
-                fprintf(stderr, "syntax error: missing file for error redirection\n");
-                free_simple_command(curr_s_cmd);
-                cur_cmd.clear();
-                return;
-            }
-            cur_cmd._errFile = strdup(tokens[idx].value.c_str());
-        }
-        // combined out & err >>&
-        else if (tkn.type == TOKEN_REDIRECT_AND_ERROR)
-        {
-            idx++;
-            if (idx >= tokens.size() || (tokens[idx].type != TOKEN_ARGUMENT && tokens[idx].type != TOKEN_COMMAND))
-            {
-                fprintf(stderr, "syntax error: missing file for out/err redirection\n");
-                free_simple_command(curr_s_cmd);
-                cur_cmd.clear();
-                return;
-            }
-            cur_cmd._outFile = strdup(tokens[idx].value.c_str());
-            cur_cmd._errFile = strdup(tokens[idx].value.c_str());
-            cur_cmd._out_error = 1;
-        }
-        // bg exec &
-        else if (tkn.type == TOKEN_BACKGROUND)
-        {
-            cur_cmd._background = 1;
+            break;
+          // o/p redirect '>'
+          case TOKEN_REDIRECT:
+            i++;
+              if (i >= tokens.size() || (tokens[i].type != TOKEN_ARGUMENT && tokens[i].type != TOKEN_COMMAND))
+              {
+                  fprintf(stderr, "errorinvalidredirection file\n");
+                  free_simple_command(curr_s_cmd);
+                  cur_cmd.clear();
+                  return;
+              }
+              cur_cmd._outFile = strdup(tokens[i].value.c_str());
+              break;
+            // append redirect '>>'
+            case TOKEN_APPEND:
+              i++;
+              if (i >= tokens.size() || (tokens[i].type != TOKEN_ARGUMENT && tokens[i].type != TOKEN_COMMAND))
+              {
+                  fprintf(stderr, "error invalid append file\n");
+                  free_simple_command(curr_s_cmd);
+                  cur_cmd.clear();
+                  return;
+              }
+              cur_cmd._outFile = strdup(tokens[i].value.c_str());
+              cur_cmd._append = 1;
+              break;
+            // i/p redirect '<'
+            case TOKEN_INPUT:
+              i++;
+              if (i >= tokens.size() || (tokens[i].type != TOKEN_ARGUMENT && tokens[i].type != TOKEN_COMMAND))
+              {
+                  fprintf(stderr, "error invalid input file\n");
+                  free_simple_command(curr_s_cmd);
+                  cur_cmd.clear();
+                  return;
+              }
+              cur_cmd._inputFile = strdup(tokens[i].value.c_str());
+              break;
+            // err redir '2>'
+            case TOKEN_ERROR:
+              i++;
+              if (i >= tokens.size() || (tokens[i].type != TOKEN_ARGUMENT && tokens[i].type != TOKEN_COMMAND))
+              {
+                  fprintf(stderr, "error invalid error redirection file\n");
+                  free_simple_command(curr_s_cmd);
+                  cur_cmd.clear();
+                  return;
+              }
+              cur_cmd._errFile = strdup(tokens[i].value.c_str());
+              break;
+            // combined out & err '>>&'
+            case TOKEN_REDIRECT_AND_ERROR:
+              i++;
+              if (i >= tokens.size() || (tokens[i].type != TOKEN_ARGUMENT && tokens[i].type != TOKEN_COMMAND))
+              {
+                  fprintf(stderr, "error invalid out/err file\n");
+                  free_simple_command(curr_s_cmd);
+                  cur_cmd.clear();
+                  return;
+              }
+              cur_cmd._outFile = strdup(tokens[i].value.c_str());
+              cur_cmd._errFile = strdup(tokens[i].value.c_str());
+              cur_cmd._out_error = 1;
+              break;
+            // background '&'
+            case TOKEN_BACKGROUND:
+              cur_cmd._background = 1;
         }
     }
 
@@ -367,7 +364,7 @@ void Command::execute()
 
     pid_t lst_pid = 0;
 
-    // loop thru pipeline
+    // loop in pipeline
     for (int i = 0; i < _numberOfSimpleCommands; i++)
     {
         dup2(fd_in, 0);
@@ -435,14 +432,14 @@ void Command::execute()
         dup2(fd_out, 1);
         close(fd_out);
 
-        // exit check
+        // exit
         if (_numberOfSimpleCommands == 1 && strcmp(_simpleCommands[0]->_arguments[0], "exit") == 0)
         {
             printf("Good bye!!\n");
             exit(0);
         }
 
-        // cd check
+        // cd
         if (_numberOfSimpleCommands == 1 && strcmp(_simpleCommands[0]->_arguments[0], "cd") == 0)
         {
             char *d = _simpleCommands[0]->_arguments[1];
